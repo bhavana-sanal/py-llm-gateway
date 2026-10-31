@@ -1,0 +1,83 @@
+# llm-gateway example configuration.
+#
+# Copy to gateway.toml and adjust. Any string may reference environment variables as
+# ${NAME} or ${NAME:-default}; keep real secrets in the environment, never in this file.
+
+[server]
+host = "127.0.0.1"
+port = 8080
+log_level = "info"                     # debug | info | warning | error
+
+# --- Upstream providers ------------------------------------------------------
+# type = "openai"     OpenAI or any OpenAI-compatible server (Ollama, vLLM, Groq, ...)
+# type = "anthropic"  Anthropic Messages API, translated to and from OpenAI format
+# type = "mock"       deterministic offline provider; needs no key and no network
+
+[providers.mock]
+type = "mock"
+
+[providers.openai]
+type = "openai"
+base_url = "https://api.openai.com/v1"
+api_key = "${OPENAI_API_KEY:-}"
+timeout_seconds = 60                   # per network operation: connect, or each read
+
+[providers.anthropic]
+type = "anthropic"
+base_url = "https://api.anthropic.com"
+api_key = "${ANTHROPIC_API_KEY:-}"
+default_max_tokens = 4096              # used when the client sends no max_tokens
+
+[providers.ollama]
+type = "openai"
+base_url = "${OLLAMA_BASE_URL:-http://localhost:11434/v1}"
+
+# --- Model aliases -----------------------------------------------------------
+# Clients ask for an alias; the gateway tries each "provider/model" in order.
+
+[models]
+mock = ["mock/mock-1"]
+smart = ["anthropic/claude-sonnet-5-5", "openai/gpt-5-mini"]
+fast = ["openai/gpt-5-mini", "ollama/llama3.3"]
+local = ["ollama/llama3.3"]
+
+# --- Gateway API keys --------------------------------------------------------
+# Clients authenticate with "Authorization: Bearer <key>".
+
+[[keys]]
+name = "dev"
+key = "${GATEWAY_DEV_KEY:-sk-gateway-dev}"
+requests_per_minute = 60
+monthly_budget_usd = 25.0              # optional; omit for no budget
+
+[[keys]]
+name = "ci"
+key = "${GATEWAY_CI_KEY:-sk-gateway-ci}"
+requests_per_minute = 600
+
+# --- Retries, fallback and circuit breaking ----------------------------------
+
+[resilience]
+max_retries = 2                        # per provider, on 408/429/5xx/timeouts
+backoff_base_seconds = 0.5             # full-jitter exponential backoff
+backoff_max_seconds = 8.0
+max_retry_after_seconds = 30.0         # a longer Retry-After falls through instead
+circuit_failure_threshold = 5          # consecutive failures before opening
+circuit_reset_seconds = 30.0           # how long to stay open before probing
+
+# --- Response cache ----------------------------------------------------------
+
+[cache]
+enabled = true
+max_entries = 1024
+ttl_seconds = 300
+cache_nonzero_temperature = false      # by default only temperature=0 is cached
+
+# --- Pricing (USD per million tokens, keyed by upstream model) ---------------
+# Illustrative numbers; check your providers' current price lists.
+
+[pricing]
+"gpt-5-mini" = { input_per_mtok = 0.25, output_per_mtok = 2.00 }
+"claude-sonnet-5-5" = { input_per_mtok = 3.00, output_per_mtok = 15.00 }
+"llama3.3" = { input_per_mtok = 0.0, output_per_mtok = 0.0 }
+"mock-1" = { input_per_mtok = 1.00, output_per_mtok = 2.00 }

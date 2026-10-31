@@ -1,0 +1,25 @@
+services:
+  gateway:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GATEWAY_DEV_KEY: ${GATEWAY_DEV_KEY:-sk-gateway-dev}
+      OLLAMA_BASE_URL: http://ollama:11434/v1
+    volumes:
+      - ./gateway.example.toml:/etc/llm-gateway/gateway.toml:ro
+    restart: unless-stopped
+
+  # Optional local models: `docker compose --profile ollama up`,
+  # then `docker compose exec ollama ollama pull llama3.3`.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama:
